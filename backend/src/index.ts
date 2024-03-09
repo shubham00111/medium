@@ -10,6 +10,18 @@ const app = new Hono<{
   };
 }>();
 
+app.use("/api/v1/blog/*", async (c, next) => {
+  const header = c.req.header("authorization")?.split(" ")[1] || "";
+  const response = await verify(header, secretPasscode);
+  if (response.email) {
+    next();
+  } else {
+    return c.json({
+      msg: "invalid token",
+    });
+  }
+});
+
 app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
@@ -33,8 +45,29 @@ app.post("/api/v1/signup", async (c) => {
   });
 });
 
-app.post("/api/vi/signin", (c) => {
-  return c.text("signin");
+app.post("/api/v1/signin", async (c) => {
+  const prisma = new PrismaClient({
+    datasourceUrl: c.env.DATABASE_URL,
+  }).$extends(withAccelerate());
+  const body = await c.req.json();
+  const { email, password } = body;
+  const user = await prisma.user.findUnique({
+    where: {
+      email: email,
+      password: password,
+    },
+  });
+
+  if (!user) {
+    return c.json({
+      msg: "invalid credentials",
+    });
+  }
+
+  const token = await sign(user, secretPasscode);
+  return c.json({
+    token,
+  });
 });
 
 app.post("/api/vi/blog", (c) => {
